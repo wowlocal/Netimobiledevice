@@ -31,13 +31,30 @@ namespace Netimobiledevice.Lockdown
         private Stream networkStream;
         private readonly byte[] receiveBuffer = new byte[MAX_READ_SIZE];
 
+        private int SOCKET_TIMEOUT = 10 * 1000;
+        private int EXTENDED_SOCKET_TIMEOUT => SOCKET_TIMEOUT * 10;
+
         public UsbmuxdDevice? MuxDevice { get; private set; }
+
+        public void ExtendedTimeout()
+        {
+            networkStream.ReadTimeout = EXTENDED_SOCKET_TIMEOUT;
+            networkStream.WriteTimeout = EXTENDED_SOCKET_TIMEOUT;
+        }
+
+        public void ResetTimeout()
+        {
+            networkStream.ReadTimeout = SOCKET_TIMEOUT;
+            networkStream.WriteTimeout = SOCKET_TIMEOUT;
+        }
 
         private ServiceConnection(Socket sock, ILogger logger, UsbmuxdDevice? muxDevice = null)
         {
             this.logger = logger;
 
             networkStream = new NetworkStream(sock, true);
+            networkStream.ReadTimeout = SOCKET_TIMEOUT;
+            networkStream.WriteTimeout = SOCKET_TIMEOUT;
             // Usbmux connections contain additional information associated with the current connection
             MuxDevice = muxDevice;
         }
@@ -123,6 +140,7 @@ namespace Netimobiledevice.Lockdown
 
                 int bytesRead;
                 if (networkStream.ReadTimeout != -1) {
+                    Console.WriteLine($"Using timeout {networkStream.ReadTimeout}");
                     CancellationTokenSource localTaskComplete = new CancellationTokenSource();
 
                     Task<int> result = networkStream.ReadAsync(receiveBuffer, 0, readSize, localTaskComplete.Token);

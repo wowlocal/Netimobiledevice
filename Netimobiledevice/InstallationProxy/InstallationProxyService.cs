@@ -4,7 +4,9 @@ using Netimobiledevice.Lockdown;
 using Netimobiledevice.Lockdown.Services;
 using Netimobiledevice.Plist;
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -65,6 +67,8 @@ namespace Netimobiledevice.InstallationProxy
         private async Task InstallFromLocal(string ipaPath, string command, CancellationToken cancellationToken, DictionaryNode? options = null, Action<int>? callback = null)
         {
             byte[] ipaContents;
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
             options ??= new DictionaryNode();
             var tmpRemoteIpaPath = "/sberinstaller.ipa";
 
@@ -75,12 +79,17 @@ namespace Netimobiledevice.InstallationProxy
             else {
                 ipaContents = await File.ReadAllBytesAsync(ipaPath, cancellationToken).ConfigureAwait(false);
             }
-
+            sw.Stop();
+            Logger.LogInformation("IPA read in {time}ms", sw.ElapsedMilliseconds);
+            sw = new Stopwatch();
+            sw.Start();
             // Use AFC to transfer the IPA to the device, this part depends on your AFC service implementation
             using (var afc = new AfcService(this.Lockdown)) // Assuming `client` is an instance of `LockdownClient`
             {
                 afc.SetFileContents(tmpRemoteIpaPath, ipaContents/*, cancellationToken*/);
             }
+            sw.Stop();
+            Logger.LogInformation("IPA transferred in {time}ms", sw.ElapsedMilliseconds);
 
             DictionaryNode cmd = new DictionaryNode
             {
@@ -88,13 +97,22 @@ namespace Netimobiledevice.InstallationProxy
                 { "ClientOptions", options },
                 { "PackagePath", new StringNode(tmpRemoteIpaPath) }
             };
+            sw = new Stopwatch();
+            sw.Start();
 
             await Service.SendPlistAsync(cmd, cancellationToken).ConfigureAwait(false);
+            sw.Stop();
+            Logger.LogInformation("Command sent in {time}ms", sw.ElapsedMilliseconds);
+            sw = new Stopwatch();
+            sw.Start();
             await WatchCompletion(cancellationToken, callback);
+            sw.Stop();
+            Logger.LogInformation("Watched completion in {time}ms", sw.ElapsedMilliseconds);
         }
 
         private async Task WatchCompletion(CancellationToken cancellationToken, Action<int>? callback = null)
         {
+            Service.ExtendedTimeout();
             while (true) {
                 PropertyNode? response = await Service.ReceivePlistAsync(cancellationToken).ConfigureAwait(false);
                 if (response == null) {
@@ -104,6 +122,7 @@ namespace Netimobiledevice.InstallationProxy
                 DictionaryNode responseDict = response.AsDictionaryNode();
 
                 if (responseDict.TryGetValue("Error", out PropertyNode? errorNode)) {
+                    Service.ResetTimeout();
                     throw new AppInstallException($"{errorNode.AsStringNode().Value}: {responseDict["ErrorDescription"].AsStringNode().Value}");
                 }
 
@@ -114,9 +133,11 @@ namespace Netimobiledevice.InstallationProxy
                 }
 
                 if (responseDict.TryGetValue("Status", out PropertyNode? status) && status.AsStringNode().Value == "Complete") {
+                    Service.ResetTimeout();
                     return;
                 }
             }
+            Service.ResetTimeout();
 
             throw new AppInstallException("Installation or command did not complete successfully.");
         }

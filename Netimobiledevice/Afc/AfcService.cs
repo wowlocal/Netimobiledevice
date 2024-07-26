@@ -84,14 +84,16 @@ namespace Netimobiledevice.Afc
             FileClose(handle);
         }
 
-        public void FileWrite(ulong handle, byte[] data, ulong chunkSize = 1UL << 30)
+        public void FileWrite(ulong handle, byte[] data, ulong chunkSize = 1UL << 23)
         {
             byte[] fileHandle = BitConverter.GetBytes(handle);
             ulong dataSize = (ulong) data.Length;
             int chunksCount = data.Length / (int) chunkSize;
             List<byte> writtenData = new List<byte>();
+            Console.WriteLine($"Writing {dataSize} bytes in {chunksCount} chunks");
 
             for (int i = 0; i < chunksCount; i++) {
+                Console.WriteLine($"Writing chunk {i}");
                 byte[] chunk = data.Skip(i * (int) chunkSize).Take((int) chunkSize).ToArray();
                 byte[] packet = fileHandle.Concat(chunk).ToArray();
 
@@ -102,9 +104,11 @@ namespace Netimobiledevice.Afc
                 if (status != AfcError.Success) {
                     throw new AfcException(status, $"Failed to write chunk: {status}");
                 }
+                Console.WriteLine($"Chunk {i} written");
             }
 
             if (dataSize % chunkSize > 0) {
+                Console.WriteLine("Writing last chunk");
                 byte[] chunk = data.Skip(chunksCount * (int) chunkSize).ToArray();
                 byte[] packet = fileHandle.Concat(chunk).ToArray();
 
@@ -115,6 +119,7 @@ namespace Netimobiledevice.Afc
                 if (status != AfcError.Success) {
                     throw new AfcException(status, $"Failed to write last chunk: {status}");
                 }
+                Console.WriteLine("Last chunk written");
             }
         }
 
