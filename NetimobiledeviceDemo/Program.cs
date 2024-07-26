@@ -33,6 +33,17 @@ public class Program
 
         List<UsbmuxdDevice> devices = Usbmux.GetDeviceList();
 
+        Console.CancelKeyPress += (sender, eventArgs) => {
+            Console.WriteLine("Cancellation requested...");
+            tokenSource.Cancel();
+
+            // Prevent the process from terminating immediately
+            eventArgs.Cancel = true;
+        };
+
+        Console.WriteLine("Press Ctrl+C to cancel the operation.");
+
+
         if (!devices.Any()) {
             logger.LogError("No device is connected to the system.");
             return;
@@ -49,7 +60,17 @@ public class Program
             }
 
             using (InstallationProxyService installationProxyService = new InstallationProxyService(lockdown)) {
-                await installationProxyService.Install("C:\\IPA2\\6443581491.zip", tokenSource.Token);
+                Action<int> progress = (int percent) => {
+                    logger.LogInformation("Installation progress: {percent}%", percent);
+                };
+                try {
+                    await installationProxyService.Install("C:\\IPA2\\6478108541.zip", tokenSource.Token, progress);
+                    // catch canceled exception
+                } catch (OperationCanceledException) {
+                    logger.LogInformation("Installation was canceled.");
+                    // exit 0
+                    return;
+                }
                 ArrayNode apps = await installationProxyService.Browse();
             }
 

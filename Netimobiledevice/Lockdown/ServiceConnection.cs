@@ -140,7 +140,6 @@ namespace Netimobiledevice.Lockdown
 
                 int bytesRead;
                 if (networkStream.ReadTimeout != -1) {
-                    Console.WriteLine($"Using timeout {networkStream.ReadTimeout}");
                     CancellationTokenSource localTaskComplete = new CancellationTokenSource();
 
                     Task<int> result = networkStream.ReadAsync(receiveBuffer, 0, readSize, localTaskComplete.Token);

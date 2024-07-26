@@ -4,9 +4,11 @@ using Netimobiledevice.Lockdown;
 using Netimobiledevice.Plist;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 namespace Netimobiledevice.Afc
 {
@@ -14,7 +16,7 @@ namespace Netimobiledevice.Afc
     {
         private const string LOCKDOWN_SERVICE_NAME = "com.apple.afc";
         private const string RSD_SERVICE_NAME = "com.apple.afc.shim.remote";
-
+        
         private const int MAXIMUM_READ_SIZE = 1024 ^ 2; // 1 MB
 
         private static readonly Dictionary<string, AfcFileOpenMode> FileOpenModes = new Dictionary<string, AfcFileOpenMode>() {
@@ -73,18 +75,18 @@ namespace Netimobiledevice.Afc
             Service.Send(packet.ToArray());
         }
 
-        public void SetFileContents(string filename, byte[] data)
+        public void SetFileContents(string filename, byte[] data, CancellationToken cancellationToken, Action<int>? callback = null)
         {
             ulong handle = FileOpen(filename, "w");
             if (handle == 0) {
                 throw new AfcException(AfcError.OpenFailed, "Failed to open file for writing.");
             }
 
-            FileWrite(handle, data);
+            FileWrite(handle, data, cancellationToken, callback);
             FileClose(handle);
         }
 
-        public void FileWrite(ulong handle, byte[] data, ulong chunkSize = 1UL << 23)
+        public void FileWrite(ulong handle, byte[] data, CancellationToken cancellationToken, Action<int>? callback = null, ulong chunkSize = 1UL << 23)
         {
             byte[] fileHandle = BitConverter.GetBytes(handle);
             ulong dataSize = (ulong) data.Length;
@@ -93,6 +95,7 @@ namespace Netimobiledevice.Afc
             Console.WriteLine($"Writing {dataSize} bytes in {chunksCount} chunks");
 
             for (int i = 0; i < chunksCount; i++) {
+                cancellationToken.ThrowIfCancellationRequested();
                 Console.WriteLine($"Writing chunk {i}");
                 byte[] chunk = data.Skip(i * (int) chunkSize).Take((int) chunkSize).ToArray();
                 byte[] packet = fileHandle.Concat(chunk).ToArray();
@@ -105,6 +108,8 @@ namespace Netimobiledevice.Afc
                     throw new AfcException(status, $"Failed to write chunk: {status}");
                 }
                 Console.WriteLine($"Chunk {i} written");
+                var progress = (int) Math.Round((double) i / chunksCount * 100);
+                callback?.Invoke(progress);
             }
 
             if (dataSize % chunkSize > 0) {

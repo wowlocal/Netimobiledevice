@@ -54,17 +54,17 @@ namespace Netimobiledevice.InstallationProxy
             return result;
         }
 
-        public async Task Install(string ipaPath, CancellationToken cancellationToken, DictionaryNode? options = null, Action<int>? callback = null)
+        public async Task Install(string ipaPath, CancellationToken cancellationToken, Action<int>? callback = null, DictionaryNode? options = null)
         {
-            await InstallFromLocal(ipaPath, "Install", cancellationToken, options, callback);
+            await InstallFromLocal(ipaPath, "Install", cancellationToken, callback, options);
         }
 
-        public async Task Upgrade(string ipaPath, CancellationToken cancellationToken, DictionaryNode? options = null, Action<int>? callback = null)
+        public async Task Upgrade(string ipaPath, CancellationToken cancellationToken, Action<int>? callback = null, DictionaryNode? options = null)
         {
-            await InstallFromLocal(ipaPath, "Upgrade", cancellationToken, options, callback);
+            await InstallFromLocal(ipaPath, "Upgrade", cancellationToken, callback, options);
         }
 
-        private async Task InstallFromLocal(string ipaPath, string command, CancellationToken cancellationToken, DictionaryNode? options = null, Action<int>? callback = null)
+        private async Task InstallFromLocal(string ipaPath, string command, CancellationToken cancellationToken, Action<int>? callback = null, DictionaryNode ? options = null)
         {
             byte[] ipaContents;
             Stopwatch sw = new Stopwatch();
@@ -84,9 +84,12 @@ namespace Netimobiledevice.InstallationProxy
             sw = new Stopwatch();
             sw.Start();
             // Use AFC to transfer the IPA to the device, this part depends on your AFC service implementation
+            Action<int> firstHalfProgress = (int percent) => {
+                callback?.Invoke(percent / 2);
+            };
             using (var afc = new AfcService(this.Lockdown)) // Assuming `client` is an instance of `LockdownClient`
             {
-                afc.SetFileContents(tmpRemoteIpaPath, ipaContents/*, cancellationToken*/);
+                afc.SetFileContents(tmpRemoteIpaPath, ipaContents, cancellationToken, firstHalfProgress);
             }
             sw.Stop();
             Logger.LogInformation("IPA transferred in {time}ms", sw.ElapsedMilliseconds);
@@ -105,7 +108,10 @@ namespace Netimobiledevice.InstallationProxy
             Logger.LogInformation("Command sent in {time}ms", sw.ElapsedMilliseconds);
             sw = new Stopwatch();
             sw.Start();
-            await WatchCompletion(cancellationToken, callback);
+            Action<int> secondHalfProgress = (int percent) => {
+                callback?.Invoke(50 + percent / 2);
+            };
+            await WatchCompletion(cancellationToken, secondHalfProgress);
             sw.Stop();
             Logger.LogInformation("Watched completion in {time}ms", sw.ElapsedMilliseconds);
         }
