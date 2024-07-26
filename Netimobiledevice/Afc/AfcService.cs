@@ -73,6 +73,51 @@ namespace Netimobiledevice.Afc
             Service.Send(packet.ToArray());
         }
 
+        public void SetFileContents(string filename, byte[] data)
+        {
+            ulong handle = FileOpen(filename, "w");
+            if (handle == 0) {
+                throw new AfcException(AfcError.OpenFailed, "Failed to open file for writing.");
+            }
+
+            FileWrite(handle, data);
+            FileClose(handle);
+        }
+
+        public void FileWrite(ulong handle, byte[] data, ulong chunkSize = 1UL << 30)
+        {
+            byte[] fileHandle = BitConverter.GetBytes(handle);
+            ulong dataSize = (ulong) data.Length;
+            int chunksCount = data.Length / (int) chunkSize;
+            List<byte> writtenData = new List<byte>();
+
+            for (int i = 0; i < chunksCount; i++) {
+                byte[] chunk = data.Skip(i * (int) chunkSize).Take((int) chunkSize).ToArray();
+                byte[] packet = fileHandle.Concat(chunk).ToArray();
+
+                DispatchPacket(AfcOpCode.Write, packet, 48);
+                writtenData.AddRange(chunk);
+
+                (AfcError status, byte[] response) = ReceiveData();
+                if (status != AfcError.Success) {
+                    throw new AfcException(status, $"Failed to write chunk: {status}");
+                }
+            }
+
+            if (dataSize % chunkSize > 0) {
+                byte[] chunk = data.Skip(chunksCount * (int) chunkSize).ToArray();
+                byte[] packet = fileHandle.Concat(chunk).ToArray();
+
+                DispatchPacket(AfcOpCode.Write, packet, 48);
+                writtenData.AddRange(chunk);
+
+                (AfcError status, byte[] response) = ReceiveData();
+                if (status != AfcError.Success) {
+                    throw new AfcException(status, $"Failed to write last chunk: {status}");
+                }
+            }
+        }
+
         private byte[] FileRead(ulong handle, ulong size)
         {
             List<byte> data = new List<byte>();

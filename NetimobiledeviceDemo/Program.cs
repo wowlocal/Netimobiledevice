@@ -43,6 +43,43 @@ public class Program
             Console.WriteLine($"Device found: {device.DeviceId} - {device.Serial}");
         }
 
+        using (LockdownClient lockdown = MobileDevice.CreateUsingUsbmux(logger: logger)) {
+            using (MisagentService misagentService = new MisagentService(lockdown)) {
+                await misagentService.GetInstalledProvisioningProfiles();
+            }
+
+            using (InstallationProxyService installationProxyService = new InstallationProxyService(lockdown)) {
+                await installationProxyService.Install("C:\\IPA2\\6443581491.zip", tokenSource.Token);
+                ArrayNode apps = await installationProxyService.Browse();
+            }
+
+            using (SpringBoardServicesService springBoard = new SpringBoardServicesService(lockdown)) {
+                PropertyNode png = springBoard.GetIconPNGData("net.whatsapp.WhatsApp");
+            }
+
+            using (DiagnosticsService diagnosticsService = new DiagnosticsService(lockdown)) {
+                DictionaryNode info = diagnosticsService.GetBattery();
+            }
+
+            using (SyslogService syslog = new SyslogService(lockdown)) {
+                int counter = 0;
+                foreach (string line in syslog.Watch()) {
+                    logger.LogDebug("{line}", line);
+                    if (counter >= 100) {
+                        break;
+                    }
+                    counter++;
+                }
+            }
+
+            // Get the list of directories in the Connected iOS device.
+            using (AfcService afcService = new AfcService(lockdown)) {
+                List<string> pathList = afcService.GetDirectoryList();
+                logger.LogInformation("Path's available in the connected iOS device are as below.\n");
+                logger.LogInformation("{pathList}", string.Join(", " + Environment.NewLine, pathList));
+            }
+        }
+
         // Connect via usbmuxd
         using (UsbmuxLockdownClient lockdown = MobileDevice.CreateUsingUsbmux(logger: logger)) {
             using (CrashReportsManager crm = new CrashReportsManager(lockdown)) {
@@ -188,42 +225,6 @@ public class Program
             }
             using (DeviceBackup backupJob = new DeviceBackup(lockdown, path)) {
                 await backupJob.Start(tokenSource.Token);
-            }
-        }
-
-        using (LockdownClient lockdown = MobileDevice.CreateUsingUsbmux(logger: logger)) {
-            using (MisagentService misagentService = new MisagentService(lockdown)) {
-                await misagentService.GetInstalledProvisioningProfiles();
-            }
-
-            using (InstallationProxyService installationProxyService = new InstallationProxyService(lockdown)) {
-                ArrayNode apps = await installationProxyService.Browse();
-            }
-
-            using (SpringBoardServicesService springBoard = new SpringBoardServicesService(lockdown)) {
-                PropertyNode png = springBoard.GetIconPNGData("net.whatsapp.WhatsApp");
-            }
-
-            using (DiagnosticsService diagnosticsService = new DiagnosticsService(lockdown)) {
-                DictionaryNode info = diagnosticsService.GetBattery();
-            }
-
-            using (SyslogService syslog = new SyslogService(lockdown)) {
-                int counter = 0;
-                foreach (string line in syslog.Watch()) {
-                    logger.LogDebug("{line}", line);
-                    if (counter >= 100) {
-                        break;
-                    }
-                    counter++;
-                }
-            }
-
-            // Get the list of directories in the Connected iOS device.
-            using (AfcService afcService = new AfcService(lockdown)) {
-                List<string> pathList = afcService.GetDirectoryList();
-                logger.LogInformation("Path's available in the connected iOS device are as below.\n");
-                logger.LogInformation("{pathList}", string.Join(", " + Environment.NewLine, pathList));
             }
         }
 
